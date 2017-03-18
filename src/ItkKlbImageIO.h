@@ -5,7 +5,12 @@
 #include "itkImageIOBase.h"
 class klb_image_header;
 
-class ItkKlbImageIO: public itk::ImageIOBase
+#if defined(COMPILE_SHARED_LIBRARY) && defined(_MSC_VER)
+    class __declspec(dllexport) ItkKlbImageIO
+#else
+    class ItkKlbImageIO
+#endif
+: public itk::ImageIOBase
 {
 public:
     typedef ItkKlbImageIO             Self;
