@@ -3,8 +3,7 @@
 
 #include "itkImage.h"
 #include "itkImageIOBase.h"
-#include "klb_imageHeader.h"
-#include "klb_imageIO.h"
+class klb_image_header;
 
 class ItkKlbImageIO: public itk::ImageIOBase
 {
@@ -56,8 +55,8 @@ protected:
     virtual void PrintSelf(std::ostream& os, itk::Indent indent) const ITK_OVERRIDE;
 
 private:
-    klb_image_header klbHeader;
-	int m_numThreads;
+    klb_image_header* m_header;
+    int m_numThreads;
 };
 
 #endif // ItkKlbImageIO_h

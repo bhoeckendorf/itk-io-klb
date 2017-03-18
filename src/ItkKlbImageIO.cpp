@@ -5,6 +5,7 @@
 #include <regex>
 #include <thread>
 
+#include "klb_imageHeader.h"
 #include "klb_Cwrapper.h"
 #include "common.h"
 
@@ -13,9 +14,13 @@ ItkKlbImageIO::ItkKlbImageIO()
     AddSupportedReadExtension( ".klb" );
     AddSupportedWriteExtension( ".klb" );
 	m_numThreads = std::thread::hardware_concurrency();
+    m_header = new klb_image_header();
 }
 
-ItkKlbImageIO::~ItkKlbImageIO() {}
+ItkKlbImageIO::~ItkKlbImageIO()
+{
+    delete m_header;
+}
 
 int ItkKlbImageIO::getNumThreads()
 {
@@ -41,9 +46,9 @@ bool ItkKlbImageIO::CanReadFile( const char* filename )
 
 void ItkKlbImageIO::ReadImageInformation()
 {
-    const int err = klbHeader.readHeader( GetFileName() );
+    const int err = m_header->readHeader( GetFileName() );
 
-    switch ( klbHeader.dataType )
+    switch ( m_header->dataType )
     {
         case KLB_DATA_TYPE::UINT8_TYPE:
             SetComponentType( UCHAR );
@@ -83,15 +88,15 @@ void ItkKlbImageIO::ReadImageInformation()
     }
 
     int lastNonSingletonDimension = 4;
-    while ( klbHeader.xyzct[lastNonSingletonDimension] == 1 )
+    while ( m_header->xyzct[lastNonSingletonDimension] == 1 )
     {
         lastNonSingletonDimension--;
     }
     SetNumberOfDimensions( lastNonSingletonDimension + 1 );
     for (int i = 0; i <= lastNonSingletonDimension; ++i)
     {
-        SetDimensions( i, klbHeader.xyzct[i] );
-		SetSpacing( i, klbHeader.pixelSize[i] );
+        SetDimensions( i, m_header->xyzct[i] );
+		SetSpacing( i, m_header->pixelSize[i] );
     }
 }
 
