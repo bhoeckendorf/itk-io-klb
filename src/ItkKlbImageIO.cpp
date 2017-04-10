@@ -1,172 +1,179 @@
 #include "ItkKlbImageIO.h"
-
-#include <fstream>
-#include <string>
+#include <iostream>
 #include <regex>
+#include <string>
 #include <thread>
 
-#include "klb_imageHeader.h"
-#include "klb_Cwrapper.h"
+// KLB imports
 #include "common.h"
+#include "klb_imageHeader.h"
+#include "klb_imageIO.h"
+
 
 ItkKlbImageIO::ItkKlbImageIO()
 {
-    AddSupportedReadExtension( ".klb" );
-    AddSupportedWriteExtension( ".klb" );
-	m_numThreads = std::thread::hardware_concurrency();
-    m_header = new klb_image_header();
+    AddSupportedReadExtension(".klb");
+    AddSupportedWriteExtension(".klb");
+    m_numThreads = std::thread::hardware_concurrency();
+    m_io = new klb_imageIO();
 }
+
 
 ItkKlbImageIO::~ItkKlbImageIO()
 {
-    delete m_header;
+    delete m_io;
 }
+
 
 int ItkKlbImageIO::getNumThreads()
 {
-	return m_numThreads;
+    return m_numThreads;
 }
+
 
 void ItkKlbImageIO::setNumThreads(const int n)
 {
-	m_numThreads = n;
+    m_numThreads = n;
 }
 
-bool ItkKlbImageIO::SupportsDimension( unsigned long dim )
+
+bool ItkKlbImageIO::SupportsDimension(unsigned long dim)
 {
-    return dim < 5;
+    return dim < KLB_DATA_DIMS;
 }
 
-bool ItkKlbImageIO::CanReadFile( const char* filename )
+
+bool ItkKlbImageIO::CanReadFile(const char* filename)
 {
     std::string fname = filename;
-    std::string::size_type pos = fname.rfind( ".klb" );
+    std::string::size_type pos = fname.rfind(".klb");
     return pos != std::string::npos && pos == fname.length() - 4;
 }
 
+
 void ItkKlbImageIO::ReadImageInformation()
 {
-    const int err = m_header->readHeader( GetFileName() );
+    m_io->setFilename(GetFileName());
+    const int err = m_io->readHeader();
 
-    switch ( m_header->dataType )
-    {
-        case KLB_DATA_TYPE::UINT8_TYPE:
-            SetComponentType( UCHAR );
-            break;
-        case KLB_DATA_TYPE::UINT16_TYPE:
-            SetComponentType( USHORT );
-            break;
-        case KLB_DATA_TYPE::UINT32_TYPE:
-            SetComponentType( UINT );
-            break;
-        case KLB_DATA_TYPE::UINT64_TYPE:
-            SetComponentType( ULONG );
-            break;
+    SetComponentType(KlbToItkType(m_io->header.dataType));
 
-        case KLB_DATA_TYPE::INT8_TYPE:
-            SetComponentType( CHAR );
-            break;
-        case KLB_DATA_TYPE::INT16_TYPE:
-            SetComponentType( SHORT );
-            break;
-        case KLB_DATA_TYPE::INT32_TYPE:
-            SetComponentType( INT );
-            break;
-        case KLB_DATA_TYPE::INT64_TYPE:
-            SetComponentType( LONG );
-            break;
-
-        case KLB_DATA_TYPE::FLOAT32_TYPE:
-            SetComponentType( FLOAT );
-            break;
-        case KLB_DATA_TYPE::FLOAT64_TYPE:
-            SetComponentType( DOUBLE );
-            break;
-
-        default:
-            SetComponentType( UNKNOWNCOMPONENTTYPE );
-    }
-
-    int lastNonSingletonDimension = 4;
-    while ( m_header->xyzct[lastNonSingletonDimension] == 1 )
+    int lastNonSingletonDimension = KLB_DATA_DIMS - 1;
+    while (m_io->header.xyzct[lastNonSingletonDimension] == 1)
     {
         lastNonSingletonDimension--;
     }
-    SetNumberOfDimensions( lastNonSingletonDimension + 1 );
+    SetNumberOfDimensions(lastNonSingletonDimension + 1);
     for (int i = 0; i <= lastNonSingletonDimension; ++i)
     {
-        SetDimensions( i, m_header->xyzct[i] );
-		SetSpacing( i, m_header->pixelSize[i] );
+        SetDimensions(i, m_io->header.xyzct[i]);
+        SetSpacing(i, m_io->header.pixelSize[i]);
     }
 }
 
-void ItkKlbImageIO::Read( void* buffer )
+
+void ItkKlbImageIO::Read(void* buffer)
 {
-    KLB_DATA_TYPE dtype;
-    readKLBstackInPlace( GetFileName(), buffer, &dtype, m_numThreads );
+    m_io->readImageFull((char*)buffer, m_numThreads);
 }
 
-void ItkKlbImageIO::PrintSelf( std::ostream& os, itk::Indent indent ) const
+
+void ItkKlbImageIO::PrintSelf(std::ostream& os, itk::Indent indent) const
 {
-    Superclass::PrintSelf( os, indent );
+    Superclass::PrintSelf(os, indent);
 }
 
-bool ItkKlbImageIO::CanWriteFile( const char* name ) { return CanReadFile( name ); }
 
-void ItkKlbImageIO::WriteImageInformation( void ) {}
-
-void ItkKlbImageIO::Write( const void* buffer )
+bool ItkKlbImageIO::CanWriteFile(const char* name)
 {
-    unsigned int imgsize[5];
-	float sampling[5];
-    unsigned long imgBytes = GetComponentSize();
+    return CanReadFile(name);
+}
+
+
+void ItkKlbImageIO::WriteImageInformation(void)
+{}
+
+
+void ItkKlbImageIO::Write(const void* buffer)
+{
+    m_io->setFilename(GetFileName());
+    m_io->header.dataType = (KLB_DATA_TYPE)ItkToKlbType(GetComponentType());
     for (unsigned int i = 0; i < GetNumberOfDimensions(); ++i)
     {
-        const SizeValueType v = GetDimensions( i );
-        imgsize[ i ] = v;
-        imgBytes *= v;
-		sampling[ i ] = GetSpacing( i );
+        m_io->header.xyzct[i] = (uint32_t)GetDimensions(i);
+        m_io->header.pixelSize[i] = (float32_t)GetSpacing(i);
     }
-    for (int i = GetNumberOfDimensions(); i < 5; ++i)
+    for (int i = GetNumberOfDimensions(); i < KLB_DATA_DIMS; ++i)
     {
-        imgsize[ i ] = 1;
+        m_io->header.xyzct[i] = (uint32_t)1;
+        m_io->header.pixelSize[i] = (float32_t)1;
     }
+    m_io->writeImage((const char*)buffer, m_numThreads);
+}
 
-    KLB_DATA_TYPE dtype;
-    switch ( GetComponentType() )
+
+inline itk::ImageIOBase::IOComponentType ItkKlbImageIO::KlbToItkType(const int klbType) const
+{
+    switch (klbType)
     {
-        case UCHAR:
-            dtype = KLB_DATA_TYPE::UINT8_TYPE;
-            break;
-        case USHORT:
-            dtype = KLB_DATA_TYPE::UINT16_TYPE;
-            break;
-        case UINT:
-            dtype = KLB_DATA_TYPE::UINT32_TYPE;
-            break;
-        case ULONG:
-            dtype = KLB_DATA_TYPE::UINT64_TYPE;
-            break;
+    case KLB_DATA_TYPE::UINT8_TYPE:
+        return UCHAR;
+    case KLB_DATA_TYPE::UINT16_TYPE:
+        return USHORT;
+    case KLB_DATA_TYPE::UINT32_TYPE:
+        return UINT;
+    case KLB_DATA_TYPE::UINT64_TYPE:
+        return ULONG;
 
-        case CHAR:
-            dtype = KLB_DATA_TYPE::INT8_TYPE;
-            break;
-        case SHORT:
-            dtype = KLB_DATA_TYPE::INT16_TYPE;
-            break;
-        case INT:
-            dtype = KLB_DATA_TYPE::INT32_TYPE;
-            break;
-        case LONG:
-            dtype = KLB_DATA_TYPE::INT64_TYPE;
-            break;
+    case KLB_DATA_TYPE::INT8_TYPE:
+        return CHAR;
+    case KLB_DATA_TYPE::INT16_TYPE:
+        return SHORT;
+    case KLB_DATA_TYPE::INT32_TYPE:
+        return INT;
+    case KLB_DATA_TYPE::INT64_TYPE:
+        return LONG;
 
-        case FLOAT:
-            dtype = KLB_DATA_TYPE::FLOAT32_TYPE;
-            break;
-        case DOUBLE:
-            dtype = KLB_DATA_TYPE::FLOAT64_TYPE;
+    case KLB_DATA_TYPE::FLOAT32_TYPE:
+        return FLOAT;
+    case KLB_DATA_TYPE::FLOAT64_TYPE:
+        return DOUBLE;
+
+    default:
+        return UNKNOWNCOMPONENTTYPE;
     }
+}
 
-    writeKLBstack( buffer, GetFileName(), imgsize, dtype, m_numThreads, sampling, NULL, KLB_COMPRESSION_TYPE::BZIP2, NULL);
+
+inline int ItkKlbImageIO::ItkToKlbType(const itk::ImageIOBase::IOComponentType itkType) const
+{
+    switch (itkType)
+    {
+    case UCHAR:
+        return KLB_DATA_TYPE::UINT8_TYPE;
+    case USHORT:
+        return KLB_DATA_TYPE::UINT16_TYPE;
+    case UINT:
+        return KLB_DATA_TYPE::UINT32_TYPE;
+    case ULONG:
+        return KLB_DATA_TYPE::UINT64_TYPE;
+
+    case CHAR:
+        return KLB_DATA_TYPE::INT8_TYPE;
+    case SHORT:
+        return KLB_DATA_TYPE::INT16_TYPE;
+    case INT:
+        return KLB_DATA_TYPE::INT32_TYPE;
+    case LONG:
+        return KLB_DATA_TYPE::INT64_TYPE;
+
+    case FLOAT:
+        return KLB_DATA_TYPE::FLOAT32_TYPE;
+    case DOUBLE:
+        return KLB_DATA_TYPE::FLOAT64_TYPE;
+
+    default:
+        std::cerr << "Error: Unknown or unsupported data type." << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
