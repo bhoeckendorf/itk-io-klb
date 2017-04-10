@@ -1,4 +1,4 @@
-project(itkklb)
+project(itk-io-klb)
 
 cmake_minimum_required(VERSION 3.5)
 
