@@ -31,8 +31,8 @@ public:
     virtual void WriteImageInformation() ITK_OVERRIDE;
     virtual void Write(const void* buffer) ITK_OVERRIDE;
 
-    int getNumThreads();
-    void setNumThreads(const int n);
+    itk::ThreadIdType GetNumberOfThreads();
+    void SetNumberOfThreads(itk::ThreadIdType n);
 
 protected:
     ItkKlbImageIO();

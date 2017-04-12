@@ -14,7 +14,7 @@ ItkKlbImageIO::ItkKlbImageIO()
 {
     AddSupportedReadExtension(".klb");
     AddSupportedWriteExtension(".klb");
-    m_numThreads = std::thread::hardware_concurrency();
+    m_numThreads = (int)std::thread::hardware_concurrency();
     m_io = new klb_imageIO();
 }
 
@@ -25,15 +25,15 @@ ItkKlbImageIO::~ItkKlbImageIO()
 }
 
 
-int ItkKlbImageIO::getNumThreads()
+itk::ThreadIdType ItkKlbImageIO::GetNumberOfThreads()
 {
-    return m_numThreads;
+    return (itk::ThreadIdType)m_numThreads;
 }
 
 
-void ItkKlbImageIO::setNumThreads(const int n)
+void ItkKlbImageIO::SetNumberOfThreads(itk::ThreadIdType n)
 {
-    m_numThreads = n;
+    m_numThreads = (int)n;
 }
 
 
